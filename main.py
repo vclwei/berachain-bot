@@ -77,7 +77,7 @@ async def claim_berachain(account: Account, semaphore: asyncio.Semaphore):
                                  params={"address": account.address},
                                 json={"address": account.address})
                 if r.ok:
-                    logger.info(f"ClaimSuccess: {account.address} status={r.status_code}")
+                    logger.success(f"ClaimSuccess: {account.address} status={r.status_code}")
                     account.last_claimed_time = time.time()
                 elif r.status_code == 429:
                     resp = r.json()
@@ -87,7 +87,7 @@ async def claim_berachain(account: Account, semaphore: asyncio.Semaphore):
                     seconds = int(re.findall(r'(\d+)s', wait_time)[0]) if 's' in wait_time else 0
                     total_seconds = hours * 3600 + minutes * 60 + seconds
                     account.last_claimed_time = time.time() - (8*60*60 - total_seconds)
-                    logger.info(f"ClaimRateLimit: {account.address} status={r.status_code} wait_time={wait_time} {resp['msg']}")
+                    logger.warning(f"ClaimRateLimit: {account.address} status={r.status_code} wait_time={wait_time} {resp['msg']}")
                 else:
                     logger.error(f"ClaimError: {account.address} status={r.status_code} {r.text}")
 
