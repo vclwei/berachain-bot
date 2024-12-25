@@ -1,6 +1,9 @@
 import asyncio
 import random
+import time
 from loguru import logger
+import re
+import json
 
 from account import Account
 from captcha import ServiceCapmonster
@@ -27,16 +30,21 @@ async def main():
         random.shuffle(accounts)
         tasks = []
         for account in accounts:
-            tasks.append(claim_berachain(account, semaphore))
-        await asyncio.gather(*tasks)
-        sleep_time = random.randint(28160, 30600)
-        logger.info(f"Sleeping for {sleep_time} seconds")
+            if account.is_claimable():
+                tasks.append(claim_berachain(account, semaphore))
+            else:
+                local_time = time.localtime(account.next_claim_time())
+                logger.info(f"NoClaimable: {account.address} next_claim_time={time.strftime('%H:%M:%S', local_time)}")
+        if len(tasks) > 0:
+            await asyncio.gather(*tasks)
+        sleep_time = random.randint(65*60, 75*60)
+        logger.info(f"CheckAfter: {sleep_time}s")
         await asyncio.sleep(sleep_time)
 
 async def claim_berachain(account: Account, semaphore: asyncio.Semaphore):
     async with semaphore:
         try:
-            run_delay = random.uniform(5, 30)
+            run_delay = random.uniform(10, 120)
             logger.info(f"Claim: {account.address} proxy={account.proxy} delay={run_delay}s")
             await asyncio.sleep(run_delay)
 
@@ -69,12 +77,22 @@ async def claim_berachain(account: Account, semaphore: asyncio.Semaphore):
                                  params={"address": account.address},
                                 json={"address": account.address})
                 if r.ok:
-                    logger.info(f"Claim: {account.address} status={r.status_code}")
+                    logger.info(f"ClaimSuccess: {account.address} status={r.status_code}")
+                    account.last_claimed_time = time.time()
+                elif r.status_code == 429:
+                    resp = r.json()
+                    wait_time = resp['msg'].split('wait ')[-1].split(' before')[0]
+                    hours = int(re.findall(r'(\d+)h', wait_time)[0]) if 'h' in wait_time else 0
+                    minutes = int(re.findall(r'(\d+)m', wait_time)[0]) if 'm' in wait_time else 0 
+                    seconds = int(re.findall(r'(\d+)s', wait_time)[0]) if 's' in wait_time else 0
+                    total_seconds = hours * 3600 + minutes * 60 + seconds
+                    account.last_claimed_time = time.time() - (8*60*60 - total_seconds)
+                    logger.info(f"ClaimRateLimit: {account.address} status={r.status_code} wait_time={wait_time} {resp['msg']}")
                 else:
-                    logger.error(f"Claim: {account.address} status={r.status_code} {r.text}")
+                    logger.error(f"ClaimError: {account.address} status={r.status_code} {r.text}")
 
         except Exception as e:
-            logger.error(f"Claim: {account.address} error={e}")
+            logger.error(f"ClaimError: {account.address} error={e}")
          
 
 if __name__ == "__main__":
