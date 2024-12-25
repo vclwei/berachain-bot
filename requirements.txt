@@ -1,2 +1,4 @@
 loguru~=0.7.3
-curl_cffi~=0.7.4
+curl_cffi~=0.8.0b7
+capmonster_python~=3.2.0
+PyYAML~=6.0.2
